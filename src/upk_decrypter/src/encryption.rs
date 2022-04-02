@@ -5,7 +5,7 @@ use std::io::SeekFrom;
 use std::ops::Add;
 
 use crate::archive::FArchive;
-use crate::Result;
+use crate::{Result, ParserError};
 
 const KEY_SIZE: usize = 32;
 
@@ -41,9 +41,13 @@ impl FAesKey {
         let end = start+len as usize;
         let block = &mut archive.get_mut()[start..end];
         let decrypted = cipher.decrypt_vec(encrypted.as_mut_slice())?;
+        if decrypted.len() != block.len() {
+            return Err(Box::new(ParserError::new("decrypted block size != encrypted block size")));
+        }
+
         block.copy_from_slice(decrypted.as_slice());
 
-        log::info!("decrypted block of {} bytes", decrypted.len());
+        //log::info!("decrypted block of {} bytes", decrypted.len());
         Ok(())
     }
 

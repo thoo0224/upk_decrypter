@@ -1,17 +1,16 @@
 #![allow(non_upper_case_globals)]
 
-use miniz_oxide::inflate::decompress_to_vec_zlib;
-
 use std::cell::RefCell;
-use std::io::{SeekFrom, Seek, Cursor, Write};
+use std::io::{SeekFrom, Cursor};
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::archive::{FArchive, FByteArchive, UESerializable, read_array, read_serializable_array, read_serializable};
-use crate::compression::{FCompressedChunk, FCompressedChunkHeader, FCompressedChunkBlock};
+use crate::archive::{FArchive, FByteArchive, UESerializable, read_array, read_serializable_array, read_sized_serializable_array};
+use crate::compression::{FCompressedChunk, decompress};
 use crate::encryption::FAesKey;
 use crate::file::GameFile;
-use crate::Result;
+use crate::{Result, ParserError};
 
 const PACKAGE_MAGIC: u32 = 0x9E2A83C1;
 
@@ -64,7 +63,7 @@ where File : GameFile {
     }
 
     pub fn load(&mut self) -> Result<FByteArchive> {
-        log::info!("loading package {}", self.file.get_filename());
+        //log::info!("loading package {}", self.file.get_filename());
 
         // todo: create the reader from the GameFile, but as long as streaming is disable we can do this
         let data = self.file.read();
@@ -72,6 +71,7 @@ where File : GameFile {
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
 
         let encrypted_size = (self.summary.header_size - self.summary.garbage_size - self.summary.name_offset + 15) & !15;
+
         self.decrypt(&mut archive, encrypted_size as usize)?;
         self.decompress(&mut archive, encrypted_size as usize)?;
 
@@ -79,9 +79,9 @@ where File : GameFile {
     }
 
     // todo: save to output path
-    pub fn save(&mut self, file_name: &str) -> Result<()> {
+    pub fn save(&mut self, path: PathBuf) -> Result<()> {
         let mut archive = self.load()?;
-        std::fs::write(file_name, &mut archive.get_mut())?;
+        std::fs::write(path, &mut archive.get_mut())?;
 
         Ok(())
     }
@@ -91,23 +91,30 @@ where File : GameFile {
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
         let keys = self.keys.deref().borrow();
-        let main_key = keys.first().unwrap();
-
-        log::info!("decrypting package with key: {}", main_key.to_hex());
-        main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
+        //log::info!("decrypting package with key: {}", main_key.to_hex());
+        for key in keys.iter() {
+            if let Ok(_) = key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize) {
+                break;
+            }
+        }
 
         Ok(())
     }
 
     fn decompress(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
-        let _ = match self.summary.compression_flags {
-            ECompressionFlags::Zlib => 0,
-            _ => panic!("only ZLIB is supported.")
-        };
+        // let _ = match self.summary.compression_flags {
+        //     ECompressionFlags::Zlib => 0,
+        //     _ => panic!("only ZLIB is supported.")
+        // };
 
         let header_end = self.summary.name_offset as usize + self.summary.compression_chunkinfo_offset as usize;
         archive.seek(SeekFrom::Start(header_end as u64))?;
-        let compressed_chunks: Vec<FCompressedChunk> = read_serializable_array(archive)?;
+        let compressed_chunks_len = archive.read_i32()?;
+        if compressed_chunks_len < 0 || compressed_chunks_len > 100 {
+            return Err(Box::new(ParserError::new("Compressed chunks too big")));
+        }
+
+        let compressed_chunks: Vec<FCompressedChunk> = read_sized_serializable_array(archive, compressed_chunks_len)?;
 
         let result: Vec<u8> = vec![0u8; self.summary.name_offset as usize + encrypted_size]; // lol make this better
         let mut result_cursor = Cursor::new(result);
@@ -115,30 +122,7 @@ where File : GameFile {
         let header = &archive.get_mut()[0..header_end];
         result_cursor.get_mut()[0..header_end].copy_from_slice(header);
 
-        for chunk in compressed_chunks {
-            archive.seek(SeekFrom::Start(chunk.compressed_offset as u64))?;
-
-            let header: FCompressedChunkHeader = read_serializable(archive)?;
-            let mut blocks: Vec<FCompressedChunkBlock> = vec![];
-            let mut total_block_size = 0;
-
-            while total_block_size < header.summary.uncompressed_size {
-                let block: FCompressedChunkBlock = read_serializable(archive)?;
-                total_block_size += block.uncompressed_size;
-                blocks.push(block);
-            }
-
-            result_cursor.seek(SeekFrom::Start(chunk.uncompressed_offset as u64))?;
-            for block in blocks {
-                let mut compressed_data = vec![0u8; block.compressed_size as usize];
-                archive.read_bytes(&mut compressed_data)?; // todo: optimize
-
-                let decompressed = decompress_to_vec_zlib(compressed_data.as_slice()).unwrap();
-                log::info!("decompressed block of {} bytes", decompressed.len());
-
-                result_cursor.write_all(decompressed.as_slice())?;
-            }
-        }
+        decompress(archive, &mut result_cursor, &compressed_chunks)?;
 
         archive.replace_cursor(result_cursor);
         Ok(())

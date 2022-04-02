@@ -1,6 +1,7 @@
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::package::FGuid;
+use crate::ParserError;
 
 type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
 
@@ -124,11 +125,18 @@ where F: Fn(&mut Ar) -> T, Ar: FArchive {
     Ok(result)
 }
 
+#[inline(always)]
 pub fn read_serializable_array<T, Ar>(archive: &mut Ar) -> Result<Vec<T>>
 where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
     let length = archive.read_i32()?;
+
+    read_sized_serializable_array(archive, length)
+}
+
+pub fn read_sized_serializable_array<T, Ar>(archive: &mut Ar, length: i32) -> Result<Vec<T>>
+where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
     if length < 0 {
-        panic!("Invalid TArray size.");
+        return Err(Box::new(ParserError::new("Invalid TArray size")));
     }
 
     let mut result: Vec<T> = Vec::with_capacity(length as usize);

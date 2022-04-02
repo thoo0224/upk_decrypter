@@ -3,11 +3,13 @@ use path_absolutize::*;
 use simple_logger::SimpleLogger;
 
 use std::io::{BufReader, BufRead};
+use std::sync::Arc;
 use std::path::Path;
 use std::fs::File;
 
 use upk_decrypter::{DefaultFileProvider, FileProvider};
 use upk_decrypter::encryption::FAesKey;
+use upk_decrypter::file::GameFile;
 
 type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
 
@@ -45,8 +47,18 @@ fn main() -> Result<()> {
         file_provider.add_faes_key(key);
     }
 
-    let package = file_provider.save_package("Body_Octane_T_SF.upk")?;
-    log::info!("{:?}", package);
+    let files = file_provider.files.clone();
+    let arc = Arc::new(file_provider);
+    for file in files {
+        let provider = arc.clone();
+            match provider.save_package(file.get_filename().as_str()) {
+                Ok(_) => log::info!("saved package {}", file.file_name),
+                Err(err) 
+                    => log::info!("failed to saved package {}: {}", file.file_name, err),
+            }
+        }
+
+    // file_provider.save_package("Currency_Credits_SF.upk")?;
 
     Ok(())
 }

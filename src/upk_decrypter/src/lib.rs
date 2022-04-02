@@ -1,7 +1,7 @@
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::fmt;
 
 pub mod package;
 pub mod file;
@@ -15,6 +15,30 @@ use package::UnPackage;
 
 pub(crate) type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
 
+#[derive(Debug)]
+#[allow(dead_code)]
+struct ParserError {
+    message: String
+}
+
+impl ParserError {
+    pub fn new(message: &str) -> Self {
+        Self{
+            message: message.to_owned()
+        }
+    }
+}
+
+impl fmt::Display for ParserError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = self.message.as_str();
+        write!(formatter, "{}", message)
+    }
+}
+
+impl std::error::Error for ParserError {
+}
+
 pub trait FileProvider { 
     type GameFileType;
 
@@ -26,7 +50,7 @@ pub struct StreamedFileProvider { } // TODO: Low priority
 #[allow(dead_code)]
 pub struct DefaultFileProvider {
     keys: Rc<RefCell<Vec<FAesKey>>>,
-    files: Vec<OsGameFile>,
+    pub files: Vec<OsGameFile>,
     output: PathBuf,
     input: PathBuf,
 }
@@ -35,7 +59,7 @@ impl FileProvider for DefaultFileProvider {
     type GameFileType = OsGameFile;
 
     fn add_faes_key(&mut self, key: FAesKey) {
-        self.keys.deref().borrow_mut().push(key);
+        self.keys.clone().borrow_mut().push(key);
     }
 }
 
@@ -65,10 +89,6 @@ impl DefaultFileProvider {
         Ok(())
     }
 
-    pub fn find_game_file(&mut self, name: &str) -> Option<&OsGameFile> {
-        self.files.iter().find(|f| f.file_name.to_lowercase() == name.to_lowercase())
-    }
-
     pub fn load_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
         let mut package = self.get_package(name)?;
         package.load()?;
@@ -76,14 +96,18 @@ impl DefaultFileProvider {
         Ok(package)
     }
 
-    pub fn save_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
+    pub fn save_package(&self, name: &str) -> Result<UnPackage<OsGameFile>> {
         let mut package = self.get_package(name)?;
-        package.save(package.file.get_filename().to_string().as_str())?;
+        let mut path = PathBuf::new();
+        path.push(self.output.as_os_str().to_str().unwrap());
+        path.push(package.file.get_filename().to_string().as_str());
+
+        package.save(path)?;
 
         Ok(package)
     }
 
-    fn get_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
+    fn get_package(&self, name: &str) -> Result<UnPackage<OsGameFile>> {
         let file = match self.find_game_file(name) {
             Some(val) => val,
             None => panic!("Package not found.")
@@ -91,6 +115,14 @@ impl DefaultFileProvider {
 
         let package = UnPackage::<OsGameFile>::new(file.clone(), self.keys.clone());
         Ok(package)
+    }
+
+    pub fn find_game_file(&self, name: &str) -> Option<&OsGameFile> {
+        self.files.iter().find(|f| f.file_name.to_lowercase() == name.to_lowercase())
+    }
+
+    pub fn get_files(&mut self) -> &Vec<OsGameFile> {
+        &self.files
     }
 
 }
