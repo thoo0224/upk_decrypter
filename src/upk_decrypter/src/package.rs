@@ -5,6 +5,7 @@ use std::io::{SeekFrom, Cursor};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::archive::{FArchive, FByteArchive, UESerializable, read_array, read_serializable_array, read_sized_serializable_array};
 use crate::compression::{FCompressedChunk, decompress};
@@ -47,14 +48,14 @@ impl From<u32> for ECompressionFlags{
 #[derive(Debug)]
 pub struct UnPackage<File: GameFile> {
     pub file: File,
-    pub keys: Rc<RefCell<Vec<FAesKey>>>,
+    pub keys: Arc<Mutex<Vec<FAesKey>>>,
     pub summary: FPackageFileSummary
 }
 
 impl<File> UnPackage<File>
 where File : GameFile {
 
-    pub fn new(file: File, keys: Rc<RefCell<Vec<FAesKey>>>) -> Self {
+    pub fn new(file: File, keys: Arc<Mutex<Vec<FAesKey>>>) -> Self {
         Self {
             file: file,
             keys,
@@ -89,7 +90,7 @@ where File : GameFile {
         let summary = &self.summary;
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
-        let keys = self.keys.deref().borrow();
+        let keys = self.keys.lock().unwrap();
         //log::info!("decrypting package with key: {}", main_key.to_hex());
         for key in keys.iter() {
             if let Ok(_) = key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize) {

@@ -10,7 +10,7 @@ use crate::{Result, ParserError};
 const KEY_SIZE: usize = 32;
 
 #[allow(dead_code)]
-#[derive(Debug)] // display to hex
+#[derive(Debug, Clone, Copy)] // display to hex
 pub struct FAesKey {
     pub(crate) key: [u8; KEY_SIZE]
 }

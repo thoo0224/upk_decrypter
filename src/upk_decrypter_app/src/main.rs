@@ -1,8 +1,11 @@
 use clap::{Parser, ArgEnum};
 use path_absolutize::*;
 use simple_logger::SimpleLogger;
+use threadpool::ThreadPool;
 
 use std::io::{BufReader, BufRead};
+use std::sync::atomic::AtomicI32;
+use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::path::Path;
 use std::fs::File;
@@ -48,15 +51,21 @@ fn main() -> Result<()> {
 
     let files = file_provider.files.clone();
     let arc = Arc::new(file_provider);
+
+    let thread_pool = ThreadPool::new(16); // todo: don't hardcode this
+
     for file in files {
         let provider = arc.clone();
-            match provider.save_package(file.get_filename().as_str()) {
+        thread_pool.execute(move || {
+             match provider.save_package(file.get_filename().as_str()) {
                 Ok(_) => log::info!("saved package {}", file.file_name),
                 Err(err) 
                     => log::info!("failed to saved package {}: {}", file.file_name, err),
             }
-        }
+        });
+    }
 
+    thread_pool.join();
     // file_provider.save_package("Currency_Credits_SF.upk")?;
 
     Ok(())
@@ -66,7 +75,7 @@ fn validate_input(args: &Args) -> Result<()> {
     let input_path = Path::new(&args.input);
     let output_path = Path::new(&args.output);
     
-    create_if_not_exists(&input_path)?; // check the provider, no need to create the directory if it's streamed
+    create_if_not_exists(&input_path)?; // todo: check the provider, no need to create the directory if it's streamed
     create_if_not_exists(&output_path)?;
 
     let provider_name = match args.provider {

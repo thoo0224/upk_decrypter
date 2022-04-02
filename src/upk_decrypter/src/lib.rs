@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::{cell::RefCell};
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::fmt;
@@ -49,7 +50,7 @@ pub struct StreamedFileProvider { } // TODO: Low priority
 
 #[allow(dead_code)]
 pub struct DefaultFileProvider {
-    keys: Rc<RefCell<Vec<FAesKey>>>,
+    keys: Arc<Mutex<Vec<FAesKey>>>,
     pub files: Vec<OsGameFile>,
     output: PathBuf,
     input: PathBuf,
@@ -59,7 +60,9 @@ impl FileProvider for DefaultFileProvider {
     type GameFileType = OsGameFile;
 
     fn add_faes_key(&mut self, key: FAesKey) {
-        self.keys.clone().borrow_mut().push(key);
+        //self.keys.clone().borrow_mut().push(key);
+        let mut keys = self.keys.lock().unwrap();
+        keys.push(key);
     }
 }
 
@@ -67,7 +70,7 @@ impl DefaultFileProvider {
 
     pub fn new(output_dir: &str, input_dir: &str) -> Self {
         Self {
-            keys: Rc::new(RefCell::new(Vec::new())),
+            keys: Arc::new(Mutex::new(Vec::new())),
             files: Vec::new(),
             output: PathBuf::from(output_dir),
             input: PathBuf::from(input_dir)
