@@ -1,7 +1,6 @@
 use aes::Aes256;
 use block_modes::{BlockMode, Ecb, block_padding::ZeroPadding};
 
-use std::borrow::Borrow;
 use std::io::SeekFrom;
 use std::ops::Add;
 
@@ -29,7 +28,8 @@ impl FAesKey {
         "0x".to_owned().add(&hex::encode(&self.key))
     }
 
-    pub fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<()> 
+    // Since only the header is encrypted, we can return the decrypted block and write it with the decompression
+    pub fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<Vec<u8>> 
     where Ar: FArchive {
         let cipher = Ecb::<Aes256, ZeroPadding>::new_from_slices(&self.key, Default::default())?;
 
@@ -37,13 +37,10 @@ impl FAesKey {
         let mut encrypted = vec![0; len];
         archive.read_bytes_vec(&mut encrypted)?;
 
-        let decrypted = cipher.decrypt(encrypted.as_mut_slice())?;
-        log::info!("Decrypted block of {} bytes", decrypted.len());
+        let decrypted = cipher.decrypt_vec(encrypted.as_mut_slice())?;
+        log::info!("decrypted block of {} bytes", decrypted.len());
 
-        archive.seek(SeekFrom::Start(offset))?;
-        archive.write_all( decrypted)?;
-
-        Ok(())
+        Ok(decrypted)
     }
 
 }

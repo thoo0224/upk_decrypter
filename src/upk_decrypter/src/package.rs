@@ -1,5 +1,6 @@
 #![allow(non_upper_case_globals)]
 
+use std::arch;
 use std::cell::RefCell;
 use std::io::SeekFrom;
 use std::ops::Deref;
@@ -67,13 +68,13 @@ where File : GameFile {
         let data = self.file.read();
         let mut archive = FByteArchive::new(data);
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
-        self.decrypt(&mut archive)?;
+        let compressed_chunks = self.decrypt(&mut archive)?;
         self.decompress(&mut archive)?;
 
         Ok(())
     }
     
-    pub fn decrypt(&mut self, archive: &mut FByteArchive) -> Result<()> {
+    pub fn decrypt(&mut self, archive: &mut FByteArchive) -> Result<Vec<FCompressedChunk>> {
         let summary = &self.summary;
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
@@ -82,9 +83,12 @@ where File : GameFile {
         let main_key = keys.first().unwrap();
 
         log::info!("Decrypting package with: {}", main_key.to_hex());
-        main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
+        let decrypted = main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
 
-        Ok(())
+        let mut header_archive = FByteArchive::new(decrypted);
+        header_archive.seek(SeekFrom::Start(self.summary.compression_chunkinfo_offset as u64))?;
+
+        read_serializable_array(&mut header_archive)
     }
 
     pub fn decompress(&mut self, archive: &mut FByteArchive) -> Result<()> {
@@ -185,6 +189,11 @@ impl UESerializable for FPackageFileSummary {
 
         val.additional_packages_to_cook = read_array(archive, |ar| ar.read_fstring().unwrap())?;
         val.unknown_structs = archive.read_i32()?;
+        for _ in 0..val.unknown_structs {
+            archive.seek(SeekFrom::Current(4 * 5))?;
+            read_array(archive, |ar| ar.read_i32())?;
+        }
+
         val.garbage_size = archive.read_i32()?;
         val.compression_chunkinfo_offset = archive.read_i32()?;
         val.last_block_size = archive.read_i32()?;

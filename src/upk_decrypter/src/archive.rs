@@ -20,6 +20,8 @@ pub trait FArchive {
 
     fn seek(&mut self, from: SeekFrom) -> Result<u64>;
 
+    fn len(&mut self) -> usize;
+
     fn read<Type, const SIZE: usize>(&mut self) -> Result<Type> {
         unsafe {
             let size = std::mem::size_of::<Type>();
@@ -136,12 +138,15 @@ where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
 
 pub struct FByteArchive {
     pub cursor: Cursor<Vec<u8>>,
+    pub size: usize
 }
 
 impl FByteArchive {
     pub fn new(data: Vec<u8>) -> Self {
+        let size = data.len();
         Self {
-            cursor: Cursor::new(data)
+            cursor: Cursor::new(data),
+            size
         }
     }
 }
@@ -158,14 +163,18 @@ impl FArchive for FByteArchive {
         Ok(())
     }
 
+    fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+        self.cursor.write_all(buf)?;
+        Ok(())
+    }
+
     fn seek(&mut self, from: SeekFrom) -> Result<u64> {
         let result = self.cursor.seek(from)?;
         Ok(result)
     }
 
-    fn write_all(&mut self, buf: &[u8]) -> Result<()> {
-        self.cursor.write_all(buf)?;
-        Ok(())
+    fn len(&mut self) -> usize {
+        self.size
     }
  
 }
