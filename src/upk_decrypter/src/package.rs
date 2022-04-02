@@ -97,6 +97,11 @@ where File : GameFile {
     }
 
     fn decompress(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
+        let _ = match self.summary.compression_flags {
+            ECompressionFlags::Gzip => 0,
+            _ => panic!("only gzip is supported.")
+        };
+
         let header_end = self.summary.name_offset as usize + self.summary.compression_chunkinfo_offset as usize;
         archive.seek(SeekFrom::Start(header_end as u64))?;
         let compressed_chunks: Vec<FCompressedChunk> = read_serializable_array(archive)?;
