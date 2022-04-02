@@ -1,7 +1,5 @@
-use std::{cell::RefCell};
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::fmt;
 
 pub mod package;
@@ -113,7 +111,7 @@ impl DefaultFileProvider {
     fn get_package(&self, name: &str) -> Result<UnPackage<OsGameFile>> {
         let file = match self.find_game_file(name) {
             Some(val) => val,
-            None => panic!("Package not found.")
+            None => return Err(Box::new(ParserError::new("Package not found.")))
         };
 
         let package = UnPackage::<OsGameFile>::new(file.clone(), self.keys.clone());

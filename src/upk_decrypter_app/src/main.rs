@@ -4,8 +4,6 @@ use simple_logger::SimpleLogger;
 use threadpool::ThreadPool;
 
 use std::io::{BufReader, BufRead};
-use std::sync::atomic::AtomicI32;
-use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::path::Path;
 use std::fs::File;
@@ -52,7 +50,7 @@ fn main() -> Result<()> {
     let files = file_provider.files.clone();
     let arc = Arc::new(file_provider);
 
-    let thread_pool = ThreadPool::new(16); // todo: don't hardcode this
+    let thread_pool = ThreadPool::new(8); // todo: don't hardcode this
 
     for file in files {
         let provider = arc.clone();
