@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "src/upk_decrypter_app",
+    "src/upk_decrypter",
+]
