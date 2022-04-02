@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     validate_input(&args)?;
 
     let mut file_provider = DefaultFileProvider::new(&args.output, &args.input);
-    file_provider.scan_files()?;
+    file_provider.scan_files_with_pattern("*_T_SF.upk")?;
 
     let keys = load_aes_keys()?;
     for key in keys {

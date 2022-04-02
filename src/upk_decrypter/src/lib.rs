@@ -77,16 +77,19 @@ impl DefaultFileProvider {
 
 
     pub fn scan_files(&mut self) -> Result<()> {
-        let paths = std::fs::read_dir(&self.input)?;
-        self.files = paths.into_iter()
-            .map(|entry| {
-                let path = entry.unwrap().path();
-                return OsGameFile::new(path);
-            })
-            .filter(|file| file.extension == "upk")
-            .collect();
-        
-        log::info!("scanned input directory, found {} packages", self.files.len());
+        self.scan_files_with_pattern("*.upk")
+    }
+
+    pub fn scan_files_with_pattern(&mut self, pattern: &str) -> Result<()> {
+        let mut path = PathBuf::from(&self.input);
+        path.push(pattern);
+
+        for entry in glob::glob(path.as_os_str().to_str().unwrap()).unwrap() {
+            if let Ok(path) = entry {
+                self.files.push(OsGameFile::new(path));
+            }
+        }
+
         Ok(())
     }
 
