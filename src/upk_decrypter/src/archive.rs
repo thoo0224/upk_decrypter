@@ -138,6 +138,14 @@ where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
     Ok(result)
 }
 
+pub fn read_serializable<T, Ar>(archive: &mut Ar) -> Result<T> 
+where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
+    let mut result = T::default();
+    T::serialize(&mut result, archive)?;
+
+    Ok(result)
+}
+
 pub struct FByteArchive {
     pub cursor: Cursor<Vec<u8>>,
     pub size: usize
