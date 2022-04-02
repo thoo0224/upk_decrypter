@@ -63,9 +63,10 @@ where File : GameFile {
         }
     }
 
-    pub fn load(&mut self) -> Result<()> {
+    pub fn load(&mut self) -> Result<FByteArchive> {
         log::info!("loading package {}", self.file.get_filename());
 
+        // todo: create the reader from the GameFile, but as long as streaming is disable we can do this
         let data = self.file.read();
         let mut archive = FByteArchive::new(data);
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
@@ -74,11 +75,13 @@ where File : GameFile {
         self.decrypt(&mut archive, encrypted_size as usize)?;
         self.decompress(&mut archive, encrypted_size as usize)?;
 
-        Ok(())
+        Ok(archive)
     }
 
-    pub fn save(&mut self) -> Result<()> {
-        
+    // todo: save to output path
+    pub fn save(&mut self, file_name: &str) -> Result<()> {
+        let mut archive = self.load()?;
+        std::fs::write(file_name, &mut archive.get_mut())?;
 
         Ok(())
     }
@@ -98,8 +101,8 @@ where File : GameFile {
 
     fn decompress(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
         let _ = match self.summary.compression_flags {
-            ECompressionFlags::Gzip => 0,
-            _ => panic!("only gzip is supported.")
+            ECompressionFlags::Zlib => 0,
+            _ => panic!("only ZLIB is supported.")
         };
 
         let header_end = self.summary.name_offset as usize + self.summary.compression_chunkinfo_offset as usize;

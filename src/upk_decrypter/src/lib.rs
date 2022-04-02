@@ -10,7 +10,7 @@ pub mod compression;
 mod archive;
 
 use encryption::FAesKey;
-use file::OsGameFile;
+use file::{OsGameFile, GameFile};
 use package::UnPackage;
 
 pub(crate) type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
@@ -70,14 +70,26 @@ impl DefaultFileProvider {
     }
 
     pub fn load_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
+        let mut package = self.get_package(name)?;
+        package.load()?;
+
+        Ok(package)
+    }
+
+    pub fn save_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
+        let mut package = self.get_package(name)?;
+        package.save(package.file.get_filename().to_string().as_str())?;
+
+        Ok(package)
+    }
+
+    fn get_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {
         let file = match self.find_game_file(name) {
             Some(val) => val,
             None => panic!("Package not found.")
         };
 
-        let mut package = UnPackage::<OsGameFile>::new(file.clone(), self.keys.clone());
-        package.load()?;
-
+        let package = UnPackage::<OsGameFile>::new(file.clone(), self.keys.clone());
         Ok(package)
     }
 

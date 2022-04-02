@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         file_provider.add_faes_key(key);
     }
 
-    let package = file_provider.load_package("Body_Octane_T_SF.upk")?;
+    let package = file_provider.save_package("Body_Octane_T_SF.upk")?;
     log::info!("{:?}", package);
 
     Ok(())
