@@ -127,6 +127,10 @@ where F: Fn(&mut Ar) -> T, Ar: FArchive {
 pub fn read_serializable_array<T, Ar>(archive: &mut Ar) -> Result<Vec<T>>
 where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
     let length = archive.read_i32()?;
+    if length < 0 {
+        panic!("Invalid TArray size.");
+    }
+
     let mut result: Vec<T> = Vec::with_capacity(length as usize);
     for _ in 0..length {
         let mut item = T::default();
@@ -152,6 +156,7 @@ pub struct FByteArchive {
 }
 
 impl FByteArchive {
+
     pub fn new(data: Vec<u8>) -> Self {
         let size = data.len();
         Self {
@@ -159,6 +164,11 @@ impl FByteArchive {
             size
         }
     }
+
+    pub(crate) fn replace_cursor(&mut self, cursor: Cursor<Vec<u8>>) {
+        self.cursor = cursor;
+    }
+
 }
 
 impl FArchive for FByteArchive {

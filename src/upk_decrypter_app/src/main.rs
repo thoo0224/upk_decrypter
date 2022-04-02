@@ -6,7 +6,7 @@ use std::io::{BufReader, BufRead};
 use std::path::Path;
 use std::fs::File;
 
-use upk_decrypter::{DefaultFileProvider, FileProvider, file};
+use upk_decrypter::{DefaultFileProvider, FileProvider};
 use upk_decrypter::encryption::FAesKey;
 
 type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;

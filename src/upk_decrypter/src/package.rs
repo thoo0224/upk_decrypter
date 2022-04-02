@@ -1,13 +1,14 @@
 #![allow(non_upper_case_globals)]
 
-use std::arch;
+use miniz_oxide::inflate::decompress_to_vec_zlib;
+
 use std::cell::RefCell;
-use std::io::{SeekFrom, Cursor, Read};
+use std::io::{SeekFrom, Seek, Cursor, Write};
 use std::ops::Deref;
 use std::rc::Rc;
 
-use crate::archive::{FArchive, FByteArchive, UESerializable, read_array, read_serializable_array};
-use crate::compression::FCompressedChunk;
+use crate::archive::{FArchive, FByteArchive, UESerializable, read_array, read_serializable_array, read_serializable};
+use crate::compression::{FCompressedChunk, FCompressedChunkHeader, FCompressedChunkBlock};
 use crate::encryption::FAesKey;
 use crate::file::GameFile;
 use crate::Result;
@@ -68,37 +69,70 @@ where File : GameFile {
         let data = self.file.read();
         let mut archive = FByteArchive::new(data);
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
-        self.decrypt(&mut archive)?;
-        self.decompress(&mut archive)?;
+
+        let encrypted_size = (self.summary.header_size - self.summary.garbage_size - self.summary.name_offset + 15) & !15;
+        self.decrypt(&mut archive, encrypted_size as usize)?;
+        self.decompress(&mut archive, encrypted_size as usize)?;
+
+        Ok(())
+    }
+
+    pub fn save(&mut self) -> Result<()> {
+        
 
         Ok(())
     }
     
-    pub fn decrypt(&mut self, archive: &mut FByteArchive) -> Result<()> {
+    fn decrypt(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
         let summary = &self.summary;
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
-        let encrypted_size = (summary.header_size - summary.garbage_size - summary.name_offset + 15) & !15;
         let keys = self.keys.deref().borrow();
         let main_key = keys.first().unwrap();
 
         log::info!("decrypting package with key: {}", main_key.to_hex());
         main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
 
-        // let mut header_archive = FByteArchive::new(decrypted);
-        // header_archive.seek(SeekFrom::Start(self.summary.compression_chunkinfo_offset as u64))?;
-
-        //read_serializable_array(&mut header_archive)
         Ok(())
     }
 
-    pub fn decompress(&mut self, archive: &mut FByteArchive) -> Result<()> {
-        archive.seek(SeekFrom::Start(self.summary.name_offset as u64 + self.summary.compression_chunkinfo_offset as u64))?;
+    fn decompress(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
+        let header_end = self.summary.name_offset as usize + self.summary.compression_chunkinfo_offset as usize;
+        archive.seek(SeekFrom::Start(header_end as u64))?;
         let compressed_chunks: Vec<FCompressedChunk> = read_serializable_array(archive)?;
+
+        let result: Vec<u8> = vec![0u8; self.summary.name_offset as usize + encrypted_size]; // lol make this better
+        let mut result_cursor = Cursor::new(result);
+
+        let header = &archive.get_mut()[0..header_end];
+        result_cursor.get_mut()[0..header_end].copy_from_slice(header);
+
         for chunk in compressed_chunks {
-            archive.seek(SeekFrom::Start(chunk.compressed_offset as usize))?;
+            archive.seek(SeekFrom::Start(chunk.compressed_offset as u64))?;
+
+            let header: FCompressedChunkHeader = read_serializable(archive)?;
+            let mut blocks: Vec<FCompressedChunkBlock> = vec![];
+            let mut total_block_size = 0;
+
+            while total_block_size < header.summary.uncompressed_size {
+                let block: FCompressedChunkBlock = read_serializable(archive)?;
+                total_block_size += block.uncompressed_size;
+                blocks.push(block);
+            }
+
+            result_cursor.seek(SeekFrom::Start(chunk.uncompressed_offset as u64))?;
+            for block in blocks {
+                let mut compressed_data = vec![0u8; block.compressed_size as usize];
+                archive.read_bytes(&mut compressed_data)?; // todo: optimize
+
+                let decompressed = decompress_to_vec_zlib(compressed_data.as_slice()).unwrap();
+                log::info!("decompressed block of {} bytes", decompressed.len());
+
+                result_cursor.write_all(decompressed.as_slice())?;
+            }
         }
 
+        archive.replace_cursor(result_cursor);
         Ok(())
     }
 
