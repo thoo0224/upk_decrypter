@@ -28,7 +28,6 @@ impl FAesKey {
         "0x".to_owned().add(&hex::encode(&self.key))
     }
 
-    // Since only the header is encrypted, we can return the decrypted block and write it with the decompression
     pub fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<()> 
     where Ar: FArchive {
         let cipher = Ecb::<Aes256, ZeroPadding>::new_from_slices(&self.key, Default::default())?;

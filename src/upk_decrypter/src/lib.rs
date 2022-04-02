@@ -9,11 +9,11 @@ pub mod encryption;
 pub mod compression;
 mod archive;
 
-use encryption::FAesKey;
 use file::{OsGameFile, GameFile};
+use encryption::FAesKey;
 use package::UnPackage;
 
-pub(crate) type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
+pub type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 #[allow(dead_code)]

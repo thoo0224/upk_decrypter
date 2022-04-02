@@ -2,8 +2,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::package::FGuid;
 use crate::ParserError;
-
-type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
+use crate::Result;
 
 pub trait UESerializable {
     type Item;

@@ -10,8 +10,7 @@ use std::fs::File;
 use upk_decrypter::{DefaultFileProvider, FileProvider};
 use upk_decrypter::encryption::FAesKey;
 use upk_decrypter::file::GameFile;
-
-type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
+use upk_decrypter::Result;
 
 #[derive(Debug, Copy, Clone, ArgEnum)]
 enum FileProviderType {
