@@ -2,7 +2,7 @@
 
 use std::arch;
 use std::cell::RefCell;
-use std::io::SeekFrom;
+use std::io::{SeekFrom, Cursor, Read};
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -68,13 +68,13 @@ where File : GameFile {
         let data = self.file.read();
         let mut archive = FByteArchive::new(data);
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
-        let compressed_chunks = self.decrypt(&mut archive)?;
+        self.decrypt(&mut archive)?;
         self.decompress(&mut archive)?;
 
         Ok(())
     }
     
-    pub fn decrypt(&mut self, archive: &mut FByteArchive) -> Result<Vec<FCompressedChunk>> {
+    pub fn decrypt(&mut self, archive: &mut FByteArchive) -> Result<()> {
         let summary = &self.summary;
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
@@ -82,18 +82,22 @@ where File : GameFile {
         let keys = self.keys.deref().borrow();
         let main_key = keys.first().unwrap();
 
-        log::info!("Decrypting package with: {}", main_key.to_hex());
-        let decrypted = main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
+        log::info!("decrypting package with key: {}", main_key.to_hex());
+        main_key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize)?;
 
-        let mut header_archive = FByteArchive::new(decrypted);
-        header_archive.seek(SeekFrom::Start(self.summary.compression_chunkinfo_offset as u64))?;
+        // let mut header_archive = FByteArchive::new(decrypted);
+        // header_archive.seek(SeekFrom::Start(self.summary.compression_chunkinfo_offset as u64))?;
 
-        read_serializable_array(&mut header_archive)
+        //read_serializable_array(&mut header_archive)
+        Ok(())
     }
 
     pub fn decompress(&mut self, archive: &mut FByteArchive) -> Result<()> {
-        archive.seek(SeekFrom::Start(self.summary.compression_chunkinfo_offset as u64))?;
-        let len = archive.read_i32()?;
+        archive.seek(SeekFrom::Start(self.summary.name_offset as u64 + self.summary.compression_chunkinfo_offset as u64))?;
+        let compressed_chunks: Vec<FCompressedChunk> = read_serializable_array(archive)?;
+        for chunk in compressed_chunks {
+            archive.seek(SeekFrom::Start(chunk.compressed_offset as usize))?;
+        }
 
         Ok(())
     }

@@ -18,6 +18,8 @@ pub trait FArchive {
 
     fn write_all(&mut self, buf: &[u8]) -> Result<()>;
 
+    fn get_mut(&mut self) -> &mut Vec<u8>; // FIX
+
     fn seek(&mut self, from: SeekFrom) -> Result<u64>;
 
     fn len(&mut self) -> usize;
@@ -175,6 +177,10 @@ impl FArchive for FByteArchive {
 
     fn len(&mut self) -> usize {
         self.size
+    }
+
+    fn get_mut(&mut self) -> &mut Vec<u8> {
+        self.cursor.get_mut()
     }
  
 }

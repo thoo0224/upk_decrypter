@@ -29,7 +29,7 @@ impl FAesKey {
     }
 
     // Since only the header is encrypted, we can return the decrypted block and write it with the decompression
-    pub fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<Vec<u8>> 
+    pub fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<()> 
     where Ar: FArchive {
         let cipher = Ecb::<Aes256, ZeroPadding>::new_from_slices(&self.key, Default::default())?;
 
@@ -37,10 +37,14 @@ impl FAesKey {
         let mut encrypted = vec![0; len];
         archive.read_bytes_vec(&mut encrypted)?;
 
+        let start = offset as usize;
+        let end = start+len as usize;
+        let block = &mut archive.get_mut()[start..end];
         let decrypted = cipher.decrypt_vec(encrypted.as_mut_slice())?;
-        log::info!("decrypted block of {} bytes", decrypted.len());
+        block.copy_from_slice(decrypted.as_slice());
 
-        Ok(decrypted)
+        log::info!("decrypted block of {} bytes", decrypted.len());
+        Ok(())
     }
 
 }
