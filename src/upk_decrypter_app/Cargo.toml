@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 upk_decrypter = { path = "../upk_decrypter" }
 
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.79"
+
 clap = { version = "3.1.6", features = ["derive"] }
 simple_logger = { version = "2.1.0", features = ["timestamps", "colors"] }
 path-absolutize = "3.0.12"

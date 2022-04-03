@@ -63,8 +63,6 @@ impl FAesKey {
         }
 
         block.copy_from_slice(decrypted.as_slice());
-
-        //log::info!("decrypted block of {} bytes", decrypted.len());
         Ok(())
     }
 

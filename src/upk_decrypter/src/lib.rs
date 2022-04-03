@@ -16,7 +16,7 @@ pub type Result<Type> = std::result::Result<Type, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 #[allow(dead_code)]
-struct ParserError {
+pub struct ParserError {
     message: String
 }
 

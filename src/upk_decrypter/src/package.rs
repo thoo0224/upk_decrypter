@@ -88,7 +88,6 @@ where File : GameFile {
         archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
 
         let keys = self.keys.lock().unwrap();
-        //log::info!("decrypting package with key: {}", main_key.to_hex());
         for key in keys.iter() {
             if let Ok(_) = key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize) {
                 break;

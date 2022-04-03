@@ -6,14 +6,17 @@ use threadpool::ThreadPool;
 
 use core::panic;
 use std::io::{BufReader, BufRead};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::path::Path;
 use std::fs::File;
 
 use upk_decrypter::{DefaultFileProvider, FileProvider};
 use upk_decrypter::encryption::FAesKey;
 use upk_decrypter::file::GameFile;
 use upk_decrypter::Result;
+
+mod epic;
+use epic::find_rocketleague_dir;
 
 #[derive(Debug, Copy, Clone, ArgEnum, PartialEq)]
 enum FileProviderType {
@@ -30,13 +33,13 @@ impl FileProviderType {
 #[derive(Parser, Debug)]
 #[clap()]
 struct Args {
-    #[clap(short, long, default_value = "E:\\Games\\rocketleague\\TAGame\\CookedPCConsole")] // todo: detect rocket league directory
-    input: String,
+    #[clap(short, long)] // todo: detect rocket league directory
+    input: Option<String>,
 
     #[clap(short, long, default_value = "./out")]
     output: String,
 
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "C:\\Users\\Thoma\\Downloads\\keys.txt")]
     keys: String,
 
     #[clap(short, long)]
@@ -48,14 +51,14 @@ struct Args {
 
 fn main() -> Result<()> {
     SimpleLogger::new().init()?;
-    let args = Args::parse();
+    let mut args = Args::parse();
     if !args.provider.is_physical() {
         panic!("StreamedFileProvider is currently not supported.");
     }
 
-    validate_input(&args)?;
+    validate_input(&mut args)?;
 
-    let mut file_provider = DefaultFileProvider::new(&args.output, &args.input);
+    let mut file_provider = DefaultFileProvider::new(&args.output, &args.input.unwrap());
     let files_found = file_provider.scan_files_with_pattern("*_T_SF.upk")?;
     log::info!("scanned directory, found {} files", files_found);
 
@@ -66,9 +69,6 @@ fn main() -> Result<()> {
     }
     log::info!("loaded {} aes keys", num_keys);
 
-    let files = file_provider.files.clone();
-    let arc = Arc::new(file_provider);
-
     let processors = match args.threads {
         Some(val) => val,
         None => num_cpus::get(),
@@ -78,12 +78,13 @@ fn main() -> Result<()> {
     log::info!("running with {} threads", processors);
 
     let mut sw = Stopwatch::start_new();
+    let files = file_provider.files.clone();
+    let arc = Arc::new(file_provider);
     for file in files {
         let provider = arc.clone();
         thread_pool.execute(move || {
-             match provider.save_package(file.get_filename().as_str()) {
-                Ok(_) => log::info!("saved package {}", file.file_name),
-                Err(_) => return
+            if let Ok(_) = provider.save_package(file.get_filename().as_str()) {
+                log::info!("saved package {}", file.file_name)
             }
         });
     }
@@ -96,7 +97,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn validate_input(args: &Args) -> Result<()> {
+fn validate_input(args: &mut Args) -> Result<()> {
+    args.input = match args.input.clone() {
+        Some(val) => Some(val),
+        None => {
+            let folder = find_rocketleague_dir()?;
+            let p: PathBuf = [&folder, "TAGame", "CookedPCConsole"].iter().collect();
+            Some(p.to_str().unwrap().to_string())
+        },
+    };
+
     let provider_name = match args.provider {
         FileProviderType::Files => "DefaultFileProvider",
         FileProviderType::Streamed => "StreamedFileProvider",
@@ -104,7 +114,8 @@ fn validate_input(args: &Args) -> Result<()> {
     log::info!("using provider: {}", provider_name);
 
     if args.provider.is_physical() {
-        let input_path = Path::new(&args.input);
+        let temp = args.input.clone().unwrap();
+        let input_path = Path::new(&temp);
         create_if_not_exists(&input_path)?;
         log::info!("using input directory: {:?}", input_path.absolutize().unwrap());
     }
