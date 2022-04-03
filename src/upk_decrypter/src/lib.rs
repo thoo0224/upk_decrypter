@@ -76,11 +76,11 @@ impl DefaultFileProvider {
     }
 
 
-    pub fn scan_files(&mut self) -> Result<()> {
+    pub fn scan_files(&mut self) -> Result<usize> {
         self.scan_files_with_pattern("*.upk")
     }
 
-    pub fn scan_files_with_pattern(&mut self, pattern: &str) -> Result<()> {
+    pub fn scan_files_with_pattern(&mut self, pattern: &str) -> Result<usize> {
         let mut path = PathBuf::from(&self.input);
         path.push(pattern);
 
@@ -90,7 +90,7 @@ impl DefaultFileProvider {
             }
         }
 
-        Ok(())
+        Ok(self.files.len())
     }
 
     pub fn load_package(&mut self, name: &str) -> Result<UnPackage<OsGameFile>> {

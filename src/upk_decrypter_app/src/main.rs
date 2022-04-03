@@ -4,6 +4,7 @@ use simple_logger::SimpleLogger;
 use stopwatch::Stopwatch;
 use threadpool::ThreadPool;
 
+use core::panic;
 use std::io::{BufReader, BufRead};
 use std::sync::Arc;
 use std::path::Path;
@@ -14,20 +15,29 @@ use upk_decrypter::encryption::FAesKey;
 use upk_decrypter::file::GameFile;
 use upk_decrypter::Result;
 
-#[derive(Debug, Copy, Clone, ArgEnum)]
+#[derive(Debug, Copy, Clone, ArgEnum, PartialEq)]
 enum FileProviderType {
     Files,
     Streamed
 }
 
+impl FileProviderType {
+    pub fn is_physical(&self) -> bool {
+        matches!(self, FileProviderType::Files)
+    }
+}
+
 #[derive(Parser, Debug)]
 #[clap()]
 struct Args {
-    #[clap(short, long, default_value = "E:\\Games\\rocketleague\\TAGame\\CookedPCConsole")]
+    #[clap(short, long, default_value = "E:\\Games\\rocketleague\\TAGame\\CookedPCConsole")] // todo: detect rocket league directory
     input: String,
 
     #[clap(short, long, default_value = "./out")]
     output: String,
+
+    #[clap(short, long)]
+    keys: String,
 
     #[clap(short, long)]
     threads: Option<usize>,
@@ -38,18 +48,23 @@ struct Args {
 
 fn main() -> Result<()> {
     SimpleLogger::new().init()?;
-
     let args = Args::parse();
+    if !args.provider.is_physical() {
+        panic!("StreamedFileProvider is currently not supported.");
+    }
+
     validate_input(&args)?;
 
     let mut file_provider = DefaultFileProvider::new(&args.output, &args.input);
-    file_provider.scan_files_with_pattern("*_T_SF.upk")?;
+    let files_found = file_provider.scan_files_with_pattern("*_T_SF.upk")?;
+    log::info!("scanned directory, found {} files", files_found);
 
-    let keys = load_aes_keys()?;
+    let keys = load_aes_keys(&args.keys)?;
+    let num_keys = keys.len();
     for key in keys {
-        //log::info!("loaded AES: {}", key.to_hex());
         file_provider.add_faes_key(key);
     }
+    log::info!("loaded {} aes keys", num_keys);
 
     let files = file_provider.files.clone();
     let arc = Arc::new(file_provider);
@@ -82,20 +97,21 @@ fn main() -> Result<()> {
 }
 
 fn validate_input(args: &Args) -> Result<()> {
-    let input_path = Path::new(&args.input);
-    let output_path = Path::new(&args.output);
-    
-    create_if_not_exists(&input_path)?; // todo: check the provider, no need to create the directory if it's streamed
-    create_if_not_exists(&output_path)?;
-
     let provider_name = match args.provider {
         FileProviderType::Files => "DefaultFileProvider",
         FileProviderType::Streamed => "StreamedFileProvider",
     };
-
     log::info!("using provider: {}", provider_name);
-    log::info!("using input path: {:?}", input_path.absolutize().unwrap());
-    log::info!("using output path: {:?}", output_path.absolutize().unwrap());
+
+    if args.provider.is_physical() {
+        let input_path = Path::new(&args.input);
+        create_if_not_exists(&input_path)?;
+        log::info!("using input directory: {:?}", input_path.absolutize().unwrap());
+    }
+
+    let output_path = Path::new(&args.output);
+    create_if_not_exists(&output_path)?;
+    log::info!("using output directory: {:?}", output_path.absolutize().unwrap());
 
     Ok(())
 }
@@ -108,8 +124,8 @@ fn create_if_not_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn load_aes_keys() -> Result<Vec<FAesKey>> {
-    let file = File::open("C:\\Users\\Thoma\\Downloads\\keys.txt")?;
+fn load_aes_keys(path: &str) -> Result<Vec<FAesKey>> {
+    let file = File::open(path)?;
     let reader = BufReader::new(file);
     let keys = reader.lines()
         .into_iter()
