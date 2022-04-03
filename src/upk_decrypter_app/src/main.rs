@@ -29,6 +29,9 @@ struct Args {
     #[clap(short, long, default_value = "./out")]
     output: String,
 
+    #[clap(short, long)]
+    threads: Option<usize>,
+
     #[clap(short, long, arg_enum, default_value = "files")]
     provider: FileProviderType
 }
@@ -51,7 +54,13 @@ fn main() -> Result<()> {
     let files = file_provider.files.clone();
     let arc = Arc::new(file_provider);
 
-    let thread_pool = ThreadPool::new(8); // todo: don't hardcode this
+    let processors = match args.threads {
+        Some(val) => val,
+        None => num_cpus::get(),
+    };
+
+    let thread_pool = ThreadPool::new(processors);
+    log::info!("running with {} threads", processors);
 
     let mut sw = Stopwatch::start_new();
     for file in files {

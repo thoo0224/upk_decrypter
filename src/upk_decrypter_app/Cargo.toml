@@ -13,4 +13,5 @@ simple_logger = { version = "2.1.0", features = ["timestamps", "colors"] }
 path-absolutize = "3.0.12"
 threadpool = "1.8.1"
 stopwatch = "0.0.7"
+num_cpus = "1.13.1"
 log = "0.4.1"
