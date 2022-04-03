@@ -37,7 +37,7 @@ impl From<u32> for ECompressionFlags{
         match val {
             COMPRESS_ZLIB => Self::Zlib,
             COMPRESS_GZIP => Self::Gzip,
-            COMPRESS_None | _ => Self::None
+            _ => Self::None
         }
     }
 }
@@ -61,17 +61,14 @@ where File : GameFile {
     }
 
     pub fn load(&mut self) -> Result<FByteArchive> {
-        //log::info!("loading package {}", self.file.get_filename());
-
-        // todo: create the reader from the GameFile, but as long as streaming is disable we can do this
         let data = self.file.read();
         let mut archive = FByteArchive::new(data);
         FPackageFileSummary::serialize(&mut self.summary, &mut archive)?;
 
-        let encrypted_size = (self.summary.header_size - self.summary.garbage_size - self.summary.name_offset + 15) & !15;
+        let encrypted_size = usize::try_from((self.summary.header_size - self.summary.garbage_size - self.summary.name_offset + 15) & !15)?;
 
-        self.decrypt(&mut archive, encrypted_size as usize)?;
-        self.decompress(&mut archive, encrypted_size as usize)?;
+        self.decrypt(&mut archive, encrypted_size)?;
+        self.decompress(&mut archive, encrypted_size)?;
 
         Ok(archive)
     }
@@ -85,11 +82,11 @@ where File : GameFile {
     
     fn decrypt(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
         let summary = &self.summary;
-        archive.seek(SeekFrom::Start(self.summary.name_offset as u64))?;
+        archive.seek(SeekFrom::Start(u64::try_from(self.summary.name_offset)?))?;
 
         let keys = self.keys.lock().unwrap();
         for key in keys.iter() {
-            if let Ok(_) = key.decrypt(archive, summary.name_offset as u64, encrypted_size as usize) {
+            if key.decrypt(archive, u64::try_from(summary.name_offset)?, encrypted_size).is_ok() {
                 break;
             }
         }
@@ -98,16 +95,16 @@ where File : GameFile {
     }
 
     fn decompress(&mut self, archive: &mut FByteArchive, encrypted_size: usize) -> Result<()> {
-        let header_end = self.summary.name_offset as usize + self.summary.compression_chunkinfo_offset as usize;
+        let header_end = usize::try_from(self.summary.name_offset)? + usize::try_from(self.summary.compression_chunkinfo_offset)?;
         archive.seek(SeekFrom::Start(header_end as u64))?;
         let compressed_chunks_len = archive.read_i32()?;
-        if compressed_chunks_len < 0 || compressed_chunks_len > 100 {
+        if !(0..100).contains(&compressed_chunks_len) {
             return Err(Box::new(ParserError::new(&format!("Compressed chunks too big: {}", compressed_chunks_len))));
         }
 
         let compressed_chunks: Vec<FCompressedChunk> = read_sized_serializable_array(archive, compressed_chunks_len)?;
 
-        let result: Vec<u8> = vec![0u8; self.summary.name_offset as usize + encrypted_size]; // lol make this better
+        let result: Vec<u8> = vec![0u8; usize::try_from(self.summary.name_offset)? + encrypted_size]; // lol make this better
         let mut result_cursor = Cursor::new(result);
 
         let header = &archive.get_mut()[0..header_end];
@@ -182,9 +179,7 @@ impl UESerializable for FPackageFileSummary {
     // todo: minimal serialization for saving only
     fn serialize<Ar: FArchive>(val: &mut Self::Item, archive: &mut Ar) -> Result<()> {
         val.magic = archive.read_u32()?;
-        if val.magic != PACKAGE_MAGIC {
-            panic!("Invalid file magic. Magic = {} PACKAGE_MAGIC = {}", val.magic, PACKAGE_MAGIC);
-        }
+        assert!(val.magic == PACKAGE_MAGIC, "Invalid file magic. Magic = {} PACKAGE_MAGIC = {}", val.magic, PACKAGE_MAGIC);
 
         val.file_version = archive.read_u16()?;
         val.licensee_version = archive.read_u16()?;

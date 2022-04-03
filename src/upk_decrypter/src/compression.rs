@@ -18,10 +18,10 @@ impl UESerializable for FCompressedChunk {
 
     fn serialize<Ar>(item: &mut Self::Item, archive: &mut Ar) -> Result<()>
     where Ar: crate::archive::FArchive {
-        item.uncompressed_offset = archive.read_i64()? as i32;
+        item.uncompressed_offset = i32::try_from(archive.read_i64()?)?;
         item.uncompressed_size = archive.read_i32()?;
 
-        item.compressed_offset = archive.read_i64()? as i32;
+        item.compressed_offset = i32::try_from(archive.read_i64()?)?;
         item.compressed_size = archive.read_i32()?;
 
         Ok(())
@@ -66,10 +66,10 @@ impl UESerializable for FCompressedChunkHeader {
     }
 }
 
-pub fn decompress<Ar>(archive: &mut Ar, cursor: &mut Cursor<Vec<u8>>, compressed_chunks: &Vec<FCompressedChunk>) -> Result<()>
+pub fn decompress<Ar>(archive: &mut Ar, cursor: &mut Cursor<Vec<u8>>, compressed_chunks: &[FCompressedChunk]) -> Result<()>
 where Ar: FArchive {
     for chunk in compressed_chunks {
-        archive.seek(SeekFrom::Start(chunk.compressed_offset as u64))?;
+        archive.seek(SeekFrom::Start(u64::try_from(chunk.compressed_offset)?))?;
 
         let header: FCompressedChunkHeader = read_serializable(archive)?;
         let mut blocks: Vec<FCompressedChunkBlock> = vec![];
@@ -81,9 +81,9 @@ where Ar: FArchive {
             blocks.push(block);
         }
 
-        cursor.seek(SeekFrom::Start(chunk.uncompressed_offset as u64))?;
+        cursor.seek(SeekFrom::Start(usize::try_from(chunk.uncompressed_offset)? as u64))?;
         for block in blocks {
-            let mut compressed_data = vec![0u8; block.compressed_size as usize];
+            let mut compressed_data = vec![0u8; usize::try_from(block.compressed_size)?];
             archive.read_bytes(&mut compressed_data)?; // todo: optimize
 
             let decompressed = decompress_to_vec_zlib(compressed_data.as_slice()).unwrap();

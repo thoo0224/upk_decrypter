@@ -27,9 +27,7 @@ pub trait FArchive {
     fn read<Type, const SIZE: usize>(&mut self) -> Result<Type> {
         unsafe {
             let size = std::mem::size_of::<Type>();
-            if SIZE != size {
-                panic!("invalid size. SIZE: {} std::mem::size_of: {}", SIZE, size);
-            }
+            assert!(SIZE == size, "invalid size. SIZE: {} std::mem::size_of: {}", SIZE, size);
 
             let mut buffer = [0u8; SIZE];
             self.read_bytes(&mut buffer)?;
@@ -80,17 +78,17 @@ pub trait FArchive {
             }
 
             let len = -length * 2;
-            let mut buffer: Vec<u8> = vec![0; len as usize];
+            let mut buffer: Vec<u8> = vec![0; usize::try_from(len)?];
             self.read_bytes_vec(&mut buffer)?;
 
             //return Ok(String::from_utf8(buffer)?);
             panic!("Unicode FString's are not supported yet.");
         }
 
-        let mut buffer = vec![0u8; length as usize];
+        let mut buffer = vec![0u8; usize::try_from(length)?];
         self.read_bytes_vec(&mut buffer)?;
 
-        return Ok(String::from_utf8(buffer)?);
+        Ok(String::from_utf8(buffer)?)
     }
 
     fn read_guid(&mut self) -> Result<FGuid> {
@@ -115,7 +113,7 @@ pub trait FArchive {
 pub fn read_array<T, Ar, F>(archive: &mut Ar, serialize: F) -> Result<Vec<T>>
 where F: Fn(&mut Ar) -> T, Ar: FArchive {
     let length = archive.read_i32()?;
-    let mut result: Vec<T> = Vec::with_capacity(length as usize);
+    let mut result: Vec<T> = Vec::with_capacity(usize::try_from(length)?);
     for _ in 0..length {
         let val = serialize(archive);
         result.push(val);
@@ -124,21 +122,20 @@ where F: Fn(&mut Ar) -> T, Ar: FArchive {
     Ok(result)
 }
 
-#[inline(always)]
 pub fn read_serializable_array<T, Ar>(archive: &mut Ar) -> Result<Vec<T>>
-where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
+where Ar: FArchive, T: UESerializable<Item = T> + Default {
     let length = archive.read_i32()?;
 
     read_sized_serializable_array(archive, length)
 }
 
 pub fn read_sized_serializable_array<T, Ar>(archive: &mut Ar, length: i32) -> Result<Vec<T>>
-where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
+where Ar: FArchive, T: UESerializable<Item = T> + Default {
     if length < 0 {
         return Err(Box::new(ParserError::new("Invalid TArray size")));
     }
 
-    let mut result: Vec<T> = Vec::with_capacity(length as usize);
+    let mut result: Vec<T> = Vec::with_capacity(usize::try_from(length)?);
     for _ in 0..length {
         let mut item = T::default();
         T::serialize(&mut item, archive)?;
@@ -150,7 +147,7 @@ where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
 }
 
 pub fn read_serializable<T, Ar>(archive: &mut Ar) -> Result<T> 
-where Ar: FArchive, T: UESerializable<Item = T>, T: Default {
+where Ar: FArchive, T: UESerializable<Item = T> + Default {
     let mut result = T::default();
     T::serialize(&mut result, archive)?;
 

@@ -21,16 +21,13 @@ pub fn find_rocketleague_dir() -> Result<String> {
     let program_data = std::env::var("PROGRAMDATA")?;
     let launcher_installed_path: PathBuf = [&program_data, "Epic", "UnrealEngineLauncher", "LauncherInstalled.dat"].into_iter().collect();
 
-    if !Path::exists(&launcher_installed_path) {
-        panic!("couldn't find LauncherInstalled.dat");
-    }
+    assert!(Path::exists(&launcher_installed_path), "couldn't find LauncherInstalled.dat");
 
     let content = std::fs::read_to_string(launcher_installed_path)?;
-    log::info!("{}", &content);
-
     let launcher_installed: LauncherInstalled = serde_json::from_str(&content)?;
     if let Some(installation) = launcher_installed.installation_list.into_iter().find(|x| x.app_name == "Sugar") {
-        return Ok(installation.install_location)
+        let cooked_folder: PathBuf = [&installation.install_location, "TAGame", "CookedPCConsole"].into_iter().collect();
+        return Ok(cooked_folder.as_os_str().to_str().unwrap().to_string())
     }
 
     panic!("couldn't find rocket league installation folder")

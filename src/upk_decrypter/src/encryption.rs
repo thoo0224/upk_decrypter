@@ -54,8 +54,8 @@ impl FAesKey {
         let mut encrypted = vec![0; len];
         archive.read_bytes_vec(&mut encrypted)?;
 
-        let start = offset as usize;
-        let end = start+len as usize;
+        let start = usize::try_from(offset)?;
+        let end = start + len;
         let block = &mut archive.get_mut()[start..end];
         let decrypted = cipher.decrypt_vec(encrypted.as_mut_slice())?;
         if decrypted.len() != block.len() {

@@ -1,12 +1,11 @@
-use clap::{Parser, ArgEnum};
-use path_absolutize::*;
+use clap::{ArgEnum, ArgMatches, Command, command, arg};
 use simple_logger::SimpleLogger;
 use stopwatch::Stopwatch;
 use threadpool::ThreadPool;
 
 use core::panic;
 use std::io::{BufReader, BufRead};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::fs::File;
 
@@ -25,53 +24,75 @@ enum FileProviderType {
 }
 
 impl FileProviderType {
-    pub fn is_physical(&self) -> bool {
+
+    pub fn is_physical(self) -> bool {
         matches!(self, FileProviderType::Files)
     }
+
 }
 
-#[derive(Parser, Debug)]
-#[clap()]
-struct Args {
-    #[clap(short, long)] // todo: detect rocket league directory
-    input: Option<String>,
+impl std::str::FromStr for FileProviderType {
+    type Err = String;
 
-    #[clap(short, long, default_value = "./out")]
-    output: String,
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        for variant in Self::value_variants() {
+            if variant.to_possible_value().unwrap().matches(s, true) {
+                return Ok(*variant);
+            }
+        }
 
-    #[clap(short, long)]
-    keys: String,
-
-    #[clap(short, long)]
-    threads: Option<usize>,
-
-    #[clap(short, long, arg_enum, default_value = "files")]
-    provider: FileProviderType
+        Err(format!("Invalid variant: {}", s))
+    }
 }
 
 fn main() -> Result<()> {
     SimpleLogger::new().init()?;
-    let mut args = Args::parse();
-    if !args.provider.is_physical() {
-        panic!("StreamedFileProvider is currently not supported.");
+    let matches = command!()
+        .subcommand(get_decrypt_command())
+        .get_matches();
+
+    match matches.subcommand() {
+        Some(("decrypt", sm)) => decrypt(sm)?,
+        _ => todo!(),
     }
 
-    validate_input(&mut args)?;
+    Ok(())
+}
 
-    let mut file_provider = DefaultFileProvider::new(&args.output, &args.input.unwrap());
+fn decrypt(args: &ArgMatches) -> Result<()> {
+    let provider_type: FileProviderType = args.value_of_t("provider")?;
+    assert!(provider_type.is_physical(), "StreamedFileProvider is currently not supported.");
+
+    // validate_input(&mut args)?; // TODO: Validate with a custom validator
+
+    let output: String = args.value_of_t("output")?;
+    if !Path::new(&output).exists() {
+        std::fs::create_dir_all(&output)?;
+    }
+
+    let input: String = args.value_of_t("input").unwrap_or(find_rocketleague_dir()?);
+    let keys: String = args.value_of_t("keys")?;
+
+    log::info!("using encryption keys file: {}", &keys);
+    log::info!("using output directory: {}", &output);
+    if provider_type.is_physical() {
+        log::info!("using input directory: {}", &input);
+    }
+    
+    let mut file_provider = DefaultFileProvider::new(&output, &input);
     let files_found = file_provider.scan_files_with_pattern("*_T_SF.upk")?;
-    log::info!("scanned directory, found {} files", files_found);
+    log::info!("scanned directory {}, found {} files", &input, files_found);
 
-    let keys = load_aes_keys(&args.keys)?;
+    let keys = load_aes_keys(&keys)?;
     let num_keys = keys.len();
     for key in keys {
         file_provider.add_faes_key(key);
     }
     log::info!("loaded {} aes keys", num_keys);
 
-    let processors = match args.threads {
-        Some(val) => val,
-        None => num_cpus::get(),
+    let processors = match args.value_of_t::<usize>("threads") {
+        Ok(val) => val,
+        Err(_) => num_cpus::get(),
     };
 
     let thread_pool = ThreadPool::new(processors);
@@ -83,8 +104,8 @@ fn main() -> Result<()> {
     for file in files {
         let provider = arc.clone();
         thread_pool.execute(move || {
-            if let Ok(_) = provider.save_package(file.get_filename().as_str()) {
-                log::info!("saved package {}", file.file_name)
+            if provider.save_package(file.get_filename().as_str()).is_ok() {
+                log::info!("saved package {}", file.file_name);
             }
         });
     }
@@ -93,54 +114,76 @@ fn main() -> Result<()> {
     sw.stop();
 
     log::info!("Finished in {}ms", sw.elapsed().as_millis());
-
     Ok(())
 }
 
-fn validate_input(args: &mut Args) -> Result<()> {
-    args.input = match args.input.clone() {
-        Some(val) => Some(val),
-        None => {
-            let folder = find_rocketleague_dir()?;
-            let p: PathBuf = [&folder, "TAGame", "CookedPCConsole"].iter().collect();
-            Some(p.to_str().unwrap().to_string())
-        },
-    };
-
-    let provider_name = match args.provider {
-        FileProviderType::Files => "DefaultFileProvider",
-        FileProviderType::Streamed => "StreamedFileProvider",
-    };
-    log::info!("using provider: {}", provider_name);
-
-    if args.provider.is_physical() {
-        let temp = args.input.clone().unwrap();
-        let input_path = Path::new(&temp);
-        create_if_not_exists(&input_path)?;
-        log::info!("using input directory: {:?}", input_path.absolutize().unwrap());
-    }
-
-    let output_path = Path::new(&args.output);
-    create_if_not_exists(&output_path)?;
-    log::info!("using output directory: {:?}", output_path.absolutize().unwrap());
-
-    Ok(())
+fn get_decrypt_command() -> Command<'static> {
+    Command::new("decrypt")
+    .about("Decrypts all the upk files in the input directory.")
+    .arg(arg!(-i --input <INPUT>).id("input")
+        .help("The input directory with all the upk files.")
+        .required(false))
+    .arg(arg!(-o --output <OUTPUT>).id("output")
+        .help("The output directory where all the decrypted files will be written to")
+        .default_value("./out")
+        .required(false))
+    .arg(arg!(-k --keys <KEYS>).id("keys")
+        .help("The file with all the encryption keys")
+        .required(true))
+    .arg(arg!(-p --provider <PROVIDER>).id("provider")
+        .help("The provider to use for the packages")
+        .possible_values(["Files", "Streamed"])
+        .default_value("Files")
+        .required(false))
+    .arg(arg!(-t --threads <THREADS>).id("threads")
+        .help("The numbers of threads that will decrypt the packages")
+        .required(false))
 }
 
-fn create_if_not_exists(path: &Path) -> Result<()> {
-    if !path.exists() {
-        std::fs::create_dir(path)?;
-    }
+// fn validate_input(args: &mut Args) -> Result<()> {
+//     args.input = match args.input.clone() {
+//         Some(val) => Some(val),
+//         None => {
+//             let folder = find_rocketleague_dir()?;
+//             let p: PathBuf = [&folder, "TAGame", "CookedPCConsole"].iter().collect();
+//             Some(p.to_str().unwrap().to_string())
+//         },
+//     };
 
-    Ok(())
-}
+//     let provider_name = match args.provider {
+//         FileProviderType::Files => "DefaultFileProvider",
+//         FileProviderType::Streamed => "StreamedFileProvider",
+//     };
+//     log::info!("using provider: {}", provider_name);
+
+//     if args.provider.is_physical() {
+//         let temp = args.input.clone().unwrap();
+//         let input_path = Path::new(&temp);
+//         create_if_not_exists(&input_path)?;
+//         log::info!("using input directory: {:?}", input_path.absolutize().unwrap());
+//     }
+
+//     let output_path = Path::new(&args.output);
+//     create_if_not_exists(&output_path)?;
+//     log::info!("using output directory: {:?}", output_path.absolutize().unwrap());
+
+//     Ok(())
+// }
+
+// fn create_if_not_exists(path: &Path) -> Result<()> {
+//     if !path.exists() {
+//         std::fs::create_dir(path)?;
+//     }
+
+//     Ok(())
+// }
 
 fn load_aes_keys(path: &str) -> Result<Vec<FAesKey>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let keys = reader.lines()
         .into_iter()
-        .map(|x| x.unwrap())
+        .map(std::result::Result::unwrap)
         .map(|line| FAesKey::from_base64(&line).unwrap())
         .collect();
 

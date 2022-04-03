@@ -1,3 +1,10 @@
+#![allow(clippy::missing_panics_doc,
+         clippy::missing_errors_doc,
+         clippy::unreadable_literal,
+         clippy::must_use_candidate,
+         clippy::module_name_repetitions,
+         clippy::inline_always)]
+
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use std::fmt;
@@ -84,10 +91,8 @@ impl DefaultFileProvider {
         let mut path = PathBuf::from(&self.input);
         path.push(pattern);
 
-        for entry in glob::glob(path.as_os_str().to_str().unwrap()).unwrap() {
-            if let Ok(path) = entry {
-                self.files.push(OsGameFile::new(path));
-            }
+        for entry in glob::glob(path.as_os_str().to_str().unwrap())?.flatten() {
+            self.files.push(OsGameFile::new(entry));
         }
 
         Ok(self.files.len())
@@ -121,6 +126,7 @@ impl DefaultFileProvider {
         Ok(package)
     }
 
+    #[must_use]
     pub fn find_game_file(&self, name: &str) -> Option<&OsGameFile> {
         self.files.iter().find(|f| f.file_name.to_lowercase() == name.to_lowercase())
     }
