@@ -40,13 +40,13 @@ impl FAesKey {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let result = vec![0u8; self.key.len()];
+        let mut result = vec![0u8; self.key.len()];
         result.copy_from_slice(&self.key);
 
         result
     }
 
-    fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<()> 
+    pub(crate) fn decrypt<Ar>(&self, archive: &mut Ar, offset: u64, len: usize) -> Result<()> 
     where Ar: FArchive {
         let cipher = Ecb::<Aes256, ZeroPadding>::new_from_slices(&self.key, Default::default())?;
 
