@@ -54,7 +54,7 @@ where File : GameFile {
 
     pub fn new(file: File, keys: Arc<Mutex<Vec<FAesKey>>>) -> Self {
         Self {
-            file: file,
+            file,
             keys,
             summary: FPackageFileSummary::default()
         }
@@ -103,7 +103,7 @@ where File : GameFile {
         archive.seek(SeekFrom::Start(header_end as u64))?;
         let compressed_chunks_len = archive.read_i32()?;
         if compressed_chunks_len < 0 || compressed_chunks_len > 100 {
-            return Err(Box::new(ParserError::new("Compressed chunks too big")));
+            return Err(Box::new(ParserError::new(&format!("Compressed chunks too big: {}", compressed_chunks_len))));
         }
 
         let compressed_chunks: Vec<FCompressedChunk> = read_sized_serializable_array(archive, compressed_chunks_len)?;

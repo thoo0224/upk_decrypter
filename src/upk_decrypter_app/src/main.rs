@@ -1,6 +1,7 @@
 use clap::{Parser, ArgEnum};
 use path_absolutize::*;
 use simple_logger::SimpleLogger;
+use stopwatch::Stopwatch;
 use threadpool::ThreadPool;
 
 use std::io::{BufReader, BufRead};
@@ -52,19 +53,21 @@ fn main() -> Result<()> {
 
     let thread_pool = ThreadPool::new(8); // todo: don't hardcode this
 
+    let mut sw = Stopwatch::start_new();
     for file in files {
         let provider = arc.clone();
         thread_pool.execute(move || {
              match provider.save_package(file.get_filename().as_str()) {
                 Ok(_) => log::info!("saved package {}", file.file_name),
-                Err(err) 
-                    => log::info!("failed to saved package {}: {}", file.file_name, err),
+                Err(_) => return
             }
         });
     }
 
     thread_pool.join();
-    // file_provider.save_package("Currency_Credits_SF.upk")?;
+    sw.stop();
+
+    log::info!("Finished in {}ms", sw.elapsed().as_millis());
 
     Ok(())
 }
