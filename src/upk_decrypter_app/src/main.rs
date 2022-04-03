@@ -39,7 +39,7 @@ struct Args {
     #[clap(short, long, default_value = "./out")]
     output: String,
 
-    #[clap(short, long, default_value = "C:\\Users\\Thoma\\Downloads\\keys.txt")]
+    #[clap(short, long)]
     keys: String,
 
     #[clap(short, long)]
