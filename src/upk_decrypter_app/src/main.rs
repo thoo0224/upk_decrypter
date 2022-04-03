@@ -63,8 +63,6 @@ fn decrypt(args: &ArgMatches) -> Result<()> {
     let provider_type: FileProviderType = args.value_of_t("provider")?;
     assert!(provider_type.is_physical(), "StreamedFileProvider is currently not supported.");
 
-    // validate_input(&mut args)?; // TODO: Validate with a custom validator
-
     let output: String = args.value_of_t("output")?;
     if !Path::new(&output).exists() {
         std::fs::create_dir_all(&output)?;
@@ -129,7 +127,8 @@ fn get_decrypt_command() -> Command<'static> {
         .required(false))
     .arg(arg!(-k --keys <KEYS>).id("keys")
         .help("The file with all the encryption keys")
-        .required(true))
+        .required(true)
+        .validator(path_exists_validator))
     .arg(arg!(-p --provider <PROVIDER>).id("provider")
         .help("The provider to use for the packages")
         .possible_values(["Files", "Streamed"])
@@ -139,44 +138,6 @@ fn get_decrypt_command() -> Command<'static> {
         .help("The numbers of threads that will decrypt the packages")
         .required(false))
 }
-
-// fn validate_input(args: &mut Args) -> Result<()> {
-//     args.input = match args.input.clone() {
-//         Some(val) => Some(val),
-//         None => {
-//             let folder = find_rocketleague_dir()?;
-//             let p: PathBuf = [&folder, "TAGame", "CookedPCConsole"].iter().collect();
-//             Some(p.to_str().unwrap().to_string())
-//         },
-//     };
-
-//     let provider_name = match args.provider {
-//         FileProviderType::Files => "DefaultFileProvider",
-//         FileProviderType::Streamed => "StreamedFileProvider",
-//     };
-//     log::info!("using provider: {}", provider_name);
-
-//     if args.provider.is_physical() {
-//         let temp = args.input.clone().unwrap();
-//         let input_path = Path::new(&temp);
-//         create_if_not_exists(&input_path)?;
-//         log::info!("using input directory: {:?}", input_path.absolutize().unwrap());
-//     }
-
-//     let output_path = Path::new(&args.output);
-//     create_if_not_exists(&output_path)?;
-//     log::info!("using output directory: {:?}", output_path.absolutize().unwrap());
-
-//     Ok(())
-// }
-
-// fn create_if_not_exists(path: &Path) -> Result<()> {
-//     if !path.exists() {
-//         std::fs::create_dir(path)?;
-//     }
-
-//     Ok(())
-// }
 
 fn load_aes_keys(path: &str) -> Result<Vec<FAesKey>> {
     let file = File::open(path)?;
@@ -188,4 +149,12 @@ fn load_aes_keys(path: &str) -> Result<Vec<FAesKey>> {
         .collect();
 
     Ok(keys)
+}
+
+fn path_exists_validator(path: &str) -> std::result::Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(String::from("path does not exist!"));
+    }
+
+    Ok(())
 }
